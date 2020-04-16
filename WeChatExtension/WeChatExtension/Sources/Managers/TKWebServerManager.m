@@ -11,7 +11,7 @@
 #import <GCDWebServer.h>
 #import <GCDWebServerDataResponse.h>
 #import <GCDWebServerURLEncodedFormRequest.h>
-#import "TKMessageManager.h"
+#import "YMMessageManager.h"
 #import "TKCacheManager.h"
 
 @interface TKWebServerManager ()
@@ -163,18 +163,25 @@ static int port=52700;
         if (userId) {
             NSMutableArray *chatLogList = [NSMutableArray array];
             
-            NSArray *msgDataList = [[TKMessageManager shareManager] getMsgListWithChatName:userId minMesLocalId:0 limitCnt:count];
+            NSArray *msgDataList = [[YMMessageManager shareManager] getMsgListWithChatName:userId minMesLocalId:0 limitCnt:count];
             [msgDataList enumerateObjectsUsingBlock:^(MessageData * _Nonnull msgData, NSUInteger idx, BOOL * _Nonnull stop) {
                 [chatLogList addObject:[weakSelf dictFromMessageData:msgData]];
             }];
             
             MMSessionMgr *sessionMgr = [[objc_getClass("MMServiceCenter") defaultCenter] getService:objc_getClass("MMSessionMgr")];
-            WCContactData *toUserContact = [sessionMgr getContact:userId];
+            WCContactData *toUserContact = nil;;
+            
+            if (LargerOrEqualVersion(@"2.3.26")) {
+                toUserContact = [sessionMgr getSessionContact:userId];
+            } else {
+                toUserContact = [sessionMgr getContact:userId];
+            }
+            
             NSString *wechatId = [toUserContact getContactDisplayUsrName];
             NSString *title = [weakSelf getUserNameWithContactData:toUserContact showOriginName:YES];
             NSString *imgPath = [[TKCacheManager shareManager] cacheAvatarWithContact:toUserContact];
             NSDictionary *toUserContactDict = @{@"title": [NSString stringWithFormat:@"To: %@", title],
-                                                @"subTitle": chatLogList.count > 0 ? TKLocalizedString(@"assistant.search.chatlog") : @"",
+                                                @"subTitle": chatLogList.count > 0 ? YMLocalizedString(@"assistant.search.chatlog") : @"",
                                                 @"icon": imgPath ?: @"",
                                                 @"userId": userId,
                                                 @"url": @"",
@@ -204,11 +211,24 @@ static int port=52700;
         if (requestBody && requestBody[@"userId"]) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 MMSessionMgr *sessionMgr = [[objc_getClass("MMServiceCenter") defaultCenter] getService:objc_getClass("MMSessionMgr")];
-                WCContactData *selectContact = [sessionMgr getContact:requestBody[@"userId"]];
+                WCContactData *selectContact = nil;
+                
+                if (LargerOrEqualVersion(@"2.3.26")) {
+                    selectContact = [sessionMgr getSessionContact:requestBody[@"userId"]];
+                } else {
+                    selectContact = [sessionMgr getContact:requestBody[@"userId"]];
+                }
                 
                 WeChat *wechat = [objc_getClass("WeChat") sharedInstance];
                 if ([selectContact isBrandContact]) {
-                    WCContactData *brandsessionholder  = [sessionMgr getContact:@"brandsessionholder"];
+                    WCContactData *brandsessionholder  = nil;
+                    
+                    if (LargerOrEqualVersion(@"2.3.26")) {
+                        brandsessionholder = [sessionMgr getSessionContact:@"brandsessionholder"];
+                    } else {
+                        brandsessionholder = [sessionMgr getContact:@"brandsessionholder"];
+                    }
+                    
                     if (brandsessionholder) {
                         [wechat startANewChatWithContact:brandsessionholder];
                         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
@@ -251,17 +271,17 @@ static int port=52700;
                                           toUsrName:requestBody[@"userId"]
                                             msgText:requestBody[@"content"]
                                          atUserList:nil];
-                    [[TKMessageManager shareManager] clearUnRead:requestBody[@"userId"]];
+                    [[YMMessageManager shareManager] clearUnRead:requestBody[@"userId"]];
                     
                 } else if (content.length == 0 && requestBody[@"srvId"]) {
                     if (requestBody[@"srvId"]) {
                         NSInteger srvId = [requestBody[@"srvId"] integerValue];
                         if (srvId != 0) {
                             MessageData *msgData = [messageService GetMsgData:userId svrId:srvId];
-                            [[TKMessageManager shareManager] playVoiceWithMessageData:msgData];
+                            [[YMMessageManager shareManager] playVoiceWithMessageData:msgData];
                         }
                     }
-                    [[TKMessageManager shareManager] clearUnRead:userId];
+                    [[YMMessageManager shareManager] clearUnRead:userId];
                 }
             });
             return [GCDWebServerResponse responseWithStatusCode:200];
@@ -300,12 +320,12 @@ static int port=52700;
     }
     NSString *subTitle = @"";
     if (subTitleArray.count > 0) {
-        subTitle = [NSString stringWithFormat:@"%@%@",TKLocalizedString(@"assistant.search.member"),[subTitleArray componentsJoinedByString:@", "]];
+        subTitle = [NSString stringWithFormat:@"%@%@",YMLocalizedString(@"assistant.search.member"),[subTitleArray componentsJoinedByString:@", "]];
     }
     NSString *imgPath = [[TKCacheManager shareManager] cacheAvatarWithContact:groupContact];
     NSString *wechatId = [groupContact getContactDisplayUsrName];
     
-    return @{@"title": [NSString stringWithFormat:@"%@%@", TKLocalizedString(@"assistant.search.group"), groupContact.getGroupDisplayName],
+    return @{@"title": [NSString stringWithFormat:@"%@%@", YMLocalizedString(@"assistant.search.group"), groupContact.getGroupDisplayName],
              @"subTitle": subTitle,
              @"icon": imgPath,
              @"userId": groupContact.m_nsUsrName,
@@ -356,7 +376,7 @@ static int port=52700;
     if (contact.m_nsNickName.length == 0) {
         return [self dictWithErrorMsg:@"用户：找不到 m_nsNickName"];
     }
-    NSString *title = [contact isBrandContact] ? [NSString stringWithFormat:@"%@%@",TKLocalizedString(@"assistant.search.official"), contact.m_nsNickName] : contact.m_nsNickName;
+    NSString *title = [contact isBrandContact] ? [NSString stringWithFormat:@"%@%@",YMLocalizedString(@"assistant.search.official"), contact.m_nsNickName] : contact.m_nsNickName;
     if(contact.m_nsRemark && ![contact.m_nsRemark isEqualToString:@""]) {
         title = [NSString stringWithFormat:@"%@(%@)",contact.m_nsRemark, contact.m_nsNickName];
     }
@@ -381,7 +401,7 @@ static int port=52700;
     MessageData *msgData = sessionInfo.m_packedInfo.m_msgData;
     
     NSString *title = [self getUserNameWithContactData:contact showOriginName:YES];
-    NSString *msgContent = [[TKMessageManager shareManager] getMessageContentWithData:msgData];
+    NSString *msgContent = [[YMMessageManager shareManager] getMessageContentWithData:msgData];
     NSString *imgPath = [[TKCacheManager shareManager] cacheAvatarWithContact:contact];
     
     NSString *wechatId = [contact getContactDisplayUsrName];
@@ -410,8 +430,15 @@ static int port=52700;
         return [self dictWithErrorMsg:@"消息不存在"];
     }
     MMSessionMgr *sessionMgr = [[objc_getClass("MMServiceCenter") defaultCenter] getService:objc_getClass("MMSessionMgr")];
-    WCContactData *msgContact = [sessionMgr getContact:msgData.fromUsrName];
-    NSString *title = [[TKMessageManager shareManager] getMessageContentWithData:msgData];
+    WCContactData *msgContact = nil;
+    
+    if (LargerOrEqualVersion(@"2.3.26")) {
+        msgContact = [sessionMgr getSessionContact:msgData.fromUsrName];
+    } else {
+        msgContact = [sessionMgr getContact:msgData.fromUsrName];
+    }
+    
+    NSString *title = [[YMMessageManager shareManager] getMessageContentWithData:msgData];
     
     NSString *url;
     long long voiceMessSvrId = 0;
@@ -452,7 +479,7 @@ static int port=52700;
             title = [title stringByAppendingString:msgData.msgVoiceText];
         }
         if (msgData.IsUnPlayed) {
-            title = [NSString stringWithFormat:@"%@(%@)",title,TKLocalizedString(@"assistant.search.message.unread")];
+            title = [NSString stringWithFormat:@"%@(%@)",title,YMLocalizedString(@"assistant.search.message.unread")];
         }
     } else if (msgData.messageType == 49) {
         NSString *msgContact = [msgData summaryString:NO];
@@ -497,7 +524,7 @@ static int port=52700;
     } else {
         //昨天
         if ([date isYesterday]) {
-            formatter.dateFormat = [NSString stringWithFormat:@"%@ HH:mm:ss", TKLocalizedString(@"assistant.search.yesterday")];
+            formatter.dateFormat = [NSString stringWithFormat:@"%@ HH:mm:ss", YMLocalizedString(@"assistant.search.yesterday")];
             return [formatter stringFromDate:date];
         } else {
             formatter.dateFormat = @"yy-MM-dd HH:mm:ss";
@@ -512,9 +539,9 @@ static int port=52700;
     
     NSString *userName;
     if (contact.isGroupChat) {
-        userName = [NSString stringWithFormat:@"%@%@", TKLocalizedString(@"assistant.search.group"), contact.getGroupDisplayName];
+        userName = [NSString stringWithFormat:@"%@%@", YMLocalizedString(@"assistant.search.group"), contact.getGroupDisplayName];
     } else if ([contact respondsToSelector:@selector(isBrandContact)]){
-        userName = contact.isBrandContact ? [NSString stringWithFormat:@"%@%@",TKLocalizedString(@"assistant.search.official"), contact.m_nsNickName] : contact.m_nsNickName;
+        userName = contact.isBrandContact ? [NSString stringWithFormat:@"%@%@",YMLocalizedString(@"assistant.search.official"), contact.m_nsNickName] : contact.m_nsNickName;
         if(contact.m_nsRemark && ![contact.m_nsRemark isEqualToString:@""]) {
             if (showOriginName) {
                 userName = [NSString stringWithFormat:@"%@(%@)",contact.m_nsRemark, contact.m_nsNickName];
